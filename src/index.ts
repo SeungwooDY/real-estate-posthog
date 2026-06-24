@@ -129,6 +129,11 @@ app.post('/oauth/register', async (req, res) => {
         app_type: 'regular_web',
         callbacks: redirect_uris ?? [],
         grant_types: ['authorization_code'],
+        // Create a CONFIDENTIAL client. Auth0 only skips consent for
+        // "verifiable" first-party clients (i.e. confidential ones); without
+        // this, Auth0 defaults to a public client (auth_method=none) and the
+        // /authorize step fails with "not authorized to access resource server".
+        token_endpoint_auth_method: 'client_secret_post',
       }),
     });
 
