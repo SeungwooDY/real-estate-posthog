@@ -1,39 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { getPropertyByName, searchProperties, getPriceSummary, getMarketAnalytics } from './db.js';
-import { capture } from './posthog.js';
 
-export function createServer(distinctId = 'anonymous'): McpServer {
+export function createServer(): McpServer {
   const server = new McpServer({
     name: 'property-data',
     version: '1.0.0',
   });
 
-  // Wrap registerTool so every tool call is captured in PostHog, including
-  // latency and whether it threw. Tool handlers are otherwise untouched.
-  const registerTool: typeof server.registerTool = (name, config, handler) => {
-    return server.registerTool(name, config, (async (args: any, extra: any) => {
-      const start = Date.now();
-      try {
-        const result = await (handler as any)(args, extra);
-        capture(distinctId, 'mcp_tool_called', {
-          tool: name,
-          duration_ms: Date.now() - start,
-          ok: true,
-        });
-        return result;
-      } catch (err) {
-        capture(distinctId, 'mcp_tool_called', {
-          tool: name,
-          duration_ms: Date.now() - start,
-          ok: false,
-        });
-        throw err;
-      }
-    }) as typeof handler);
-  };
-
-  registerTool(
+  server.registerTool(
     'get_property',
     {
       description: 'Look up a single property by name. Returns full details including address, square_footage, and price',
@@ -51,7 +26,7 @@ export function createServer(distinctId = 'anonymous'): McpServer {
     }
   );
 
-  registerTool(
+  server.registerTool(
     'search_properties',
     {
       description: 'Search properties by name, address, minimum/maximum square footage, and minimum/maximum price',
@@ -78,7 +53,7 @@ export function createServer(distinctId = 'anonymous'): McpServer {
     }
   );
 
-  registerTool(
+  server.registerTool(
     'get_price_summary',
     {
       description: 'Return price summary of all properties',
@@ -94,7 +69,7 @@ export function createServer(distinctId = 'anonymous'): McpServer {
     }
   );
 
-  registerTool(
+  server.registerTool(
     'compare_properties',
     {
       description: 'Compare multiple properties side by side by name. Returns details for each match.',
@@ -114,7 +89,7 @@ export function createServer(distinctId = 'anonymous'): McpServer {
     }
   );
 
-  registerTool(
+  server.registerTool(
     'estimate_mortgage',
     {
       description: 'Estimate the monthly mortgage payment for a property price, down payment, rate, and term.',
@@ -139,7 +114,7 @@ export function createServer(distinctId = 'anonymous'): McpServer {
     }
   );
 
-  registerTool(
+  server.registerTool(
     'get_market_analytics',
     {
       description: 'Premium market analytics — listing count, average/min/max price, and average price per square foot, optionally for a specific city.',
@@ -157,7 +132,7 @@ export function createServer(distinctId = 'anonymous'): McpServer {
     }
   );
 
-  registerTool(
+  server.registerTool(
     'save_listing',
     {
       description: "Save a property to the user's shortlist by name.",
@@ -174,7 +149,7 @@ export function createServer(distinctId = 'anonymous'): McpServer {
     }
   );
 
-  registerTool(
+  server.registerTool(
     'request_showing',
     {
       description: 'Request an in-person showing for a property by name, optionally on a specific date.',

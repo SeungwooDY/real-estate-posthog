@@ -1,37 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { getPropertyByName, searchProperties, getPriceSummary, getMarketAnalytics } from './db.js';
-import { capture } from './posthog.js';
-export function createServer(distinctId = 'anonymous') {
+export function createServer() {
     const server = new McpServer({
         name: 'property-data',
         version: '1.0.0',
     });
-    // Wrap registerTool so every tool call is captured in PostHog, including
-    // latency and whether it threw. Tool handlers are otherwise untouched.
-    const registerTool = (name, config, handler) => {
-        return server.registerTool(name, config, (async (args, extra) => {
-            const start = Date.now();
-            try {
-                const result = await handler(args, extra);
-                capture(distinctId, 'mcp_tool_called', {
-                    tool: name,
-                    duration_ms: Date.now() - start,
-                    ok: true,
-                });
-                return result;
-            }
-            catch (err) {
-                capture(distinctId, 'mcp_tool_called', {
-                    tool: name,
-                    duration_ms: Date.now() - start,
-                    ok: false,
-                });
-                throw err;
-            }
-        }));
-    };
-    registerTool('get_property', {
+    server.registerTool('get_property', {
         description: 'Look up a single property by name. Returns full details including address, square_footage, and price',
         inputSchema: z.object({
             name: z.string().describe('The name of property to look up'),
@@ -44,7 +19,7 @@ export function createServer(distinctId = 'anonymous') {
         const result = `${property.name} | Address: ${property.address} | Square Footage: ${property.square_footage} | Price: $${property.price}`;
         return { content: [{ type: 'text', text: result }] };
     });
-    registerTool('search_properties', {
+    server.registerTool('search_properties', {
         description: 'Search properties by name, address, minimum/maximum square footage, and minimum/maximum price',
         inputSchema: z.object({
             name: z.string().optional().describe('property name'),
@@ -64,7 +39,7 @@ export function createServer(distinctId = 'anonymous') {
         const result = results.map(p => `${p.name} | ${p.address} | ${p.square_footage} sqft | $${p.price}`).join('\n');
         return { content: [{ type: 'text', text: result }] };
     });
-    registerTool('get_price_summary', {
+    server.registerTool('get_price_summary', {
         description: 'Return price summary of all properties',
         inputSchema: z.object({}),
     }, async () => {
@@ -75,7 +50,7 @@ export function createServer(distinctId = 'anonymous') {
         const result = `Total Listings: ${summary.total_listings} | Average Price: $${summary.average_price} | Most Expensive: ${summary.most_expensive.name} at $${summary.most_expensive.price} | Least Expensive: ${summary.least_expensive.name} at $${summary.least_expensive.price}`;
         return { content: [{ type: 'text', text: result }] };
     });
-    registerTool('compare_properties', {
+    server.registerTool('compare_properties', {
         description: 'Compare multiple properties side by side by name. Returns details for each match.',
         inputSchema: z.object({
             names: z.array(z.string()).describe('property names to compare'),
@@ -90,7 +65,7 @@ export function createServer(distinctId = 'anonymous') {
             .join('\n');
         return { content: [{ type: 'text', text: result }] };
     });
-    registerTool('estimate_mortgage', {
+    server.registerTool('estimate_mortgage', {
         description: 'Estimate the monthly mortgage payment for a property price, down payment, rate, and term.',
         inputSchema: z.object({
             price: z.number().describe('property price'),
@@ -110,7 +85,7 @@ export function createServer(distinctId = 'anonymous') {
         const result = `Estimated monthly payment: $${Math.round(monthly)} (price $${price}, down $${Math.round(down)}, ${annual_rate ?? 6.5}% over ${years ?? 30} yrs)`;
         return { content: [{ type: 'text', text: result }] };
     });
-    registerTool('get_market_analytics', {
+    server.registerTool('get_market_analytics', {
         description: 'Premium market analytics — listing count, average/min/max price, and average price per square foot, optionally for a specific city.',
         inputSchema: z.object({
             city: z.string().optional().describe('city to filter by, e.g. Austin'),
@@ -123,7 +98,7 @@ export function createServer(distinctId = 'anonymous') {
         const result = `Market analytics (${a.scope}): ${a.listings} listings | avg $${a.average_price} | range $${a.min_price}–$${a.max_price} | avg $/sqft ${a.avg_price_per_sqft ?? 'n/a'}`;
         return { content: [{ type: 'text', text: result }] };
     });
-    registerTool('save_listing', {
+    server.registerTool('save_listing', {
         description: "Save a property to the user's shortlist by name.",
         inputSchema: z.object({
             name: z.string().describe('property name to save'),
@@ -135,7 +110,7 @@ export function createServer(distinctId = 'anonymous') {
         }
         return { content: [{ type: 'text', text: `Saved "${property.name}" to your shortlist.` }] };
     });
-    registerTool('request_showing', {
+    server.registerTool('request_showing', {
         description: 'Request an in-person showing for a property by name, optionally on a specific date.',
         inputSchema: z.object({
             name: z.string().describe('property name'),

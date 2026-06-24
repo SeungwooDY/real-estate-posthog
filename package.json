@@ -15,6 +15,7 @@
   "type": "module",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@posthog/mcp": "^0.4.1",
     "@supabase/supabase-js": "^2.105.4",
     "express": "^5.2.1",
     "express-oauth2-jwt-bearer": "^1.8.0",

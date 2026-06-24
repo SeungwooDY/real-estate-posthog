@@ -8,8 +8,9 @@ import { randomUUID } from 'node:crypto';
 import { auth } from 'express-oauth2-jwt-bearer';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+import { instrument } from '@posthog/mcp';
 import { createServer } from './server.js';
-import { capture, identify, shutdownPosthog } from './posthog.js';
+import { posthog, shutdownPosthog } from './posthog.js';
 
 const app = express();
 
@@ -192,16 +193,21 @@ app.post('/mcp', checkJwt, async (req, res) => {
       sessionIdGenerator: () => randomUUID(),
     });
 
-    // Identify the user in PostHog and record the new MCP session.
-    const claims = (req as any).auth?.payload ?? {};
-    const distinctId = claims.sub ?? claims.email ?? 'anonymous';
-    identify(distinctId, { email: claims.email, auth0_sub: claims.sub });
-    capture(distinctId, 'mcp_session_started', {
-      agent_client: req.headers['user-agent']?.split(' ')[0],
-      ip: req.ip,
-    });
+    const server = createServer();
 
-    const server = createServer(distinctId);
+    // Instrument the MCP server so PostHog auto-captures $mcp_tool_call,
+    // $mcp_initialize, and $exception. Identify the user from Auth0 claims.
+    if (posthog) {
+      const claims = (req as any).auth?.payload ?? {};
+      const distinctId = claims.sub ?? claims.email ?? 'anonymous';
+      instrument(server, posthog, {
+        identify: { distinctId, properties: { email: claims.email, auth0_sub: claims.sub } },
+        // Inject a required `context` param into every tool so the calling LLM
+        // explains its intent; captured as $mcp_intent (stripped before handlers run).
+        context: true,
+      });
+    }
+
     await server.connect(transport);
 
     // Handle the request first so sessionId gets assigned
@@ -271,7 +277,7 @@ app.use((err: any, req: any, res: any, next: any) => {
 
 app.listen(PORT, () => {
   console.log(`Real Estate MCP Server running on port ${PORT}`);
-  capture('server', 'server_started', { port: PORT });
+  posthog?.capture({ distinctId: 'server', event: 'server_started', properties: { port: PORT } });
 });
 
 // Flush PostHog events before exiting.
